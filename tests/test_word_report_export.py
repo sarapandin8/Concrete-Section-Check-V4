@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import base64
 from dataclasses import replace
 from io import BytesIO
 
 import pandas as pd
+import plotly.graph_objects as go
 from docx import Document
 
 from concrete_pmm_pro.core.models import LoadCase
@@ -47,6 +49,12 @@ def _simple_serviceability_summary() -> ServiceabilitySummary:
         overall_status="PASS",
         governing_combo="SLS Service 1",
         section_basis_used="gross",
+    )
+
+
+def _one_pixel_png() -> bytes:
+    return base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
     )
 
 
@@ -155,6 +163,25 @@ def test_word_report_does_not_fail_when_png_export_unavailable(monkeypatch) -> N
 
     assert "Figure not embedded" in text
     assert "PNG export requires kaleido" in text
+
+
+def test_word_report_embeds_figure_when_png_export_succeeds(monkeypatch) -> None:
+    def _png(_fig):
+        return _one_pixel_png(), []
+
+    monkeypatch.setattr("concrete_pmm_pro.reporting.word_export.plotly_figure_to_png_bytes", _png)
+    session_state = {
+        "rc_pmm_result": object(),
+        "serviceability_summary": _simple_serviceability_summary(),
+        "section_geometry": None,
+        "pmm_interaction_surface_figure": go.Figure(data=[go.Scatter3d(x=[0, 1], y=[0, 1], z=[0, 1])]),
+    }
+    manifest = build_report_manifest(session_state)
+    report_bytes = build_draft_word_report(manifest, session_state)
+    document = Document(BytesIO(report_bytes))
+
+    assert len(document.inline_shapes) >= 1
+    assert "Figure not embedded: PNG export unavailable" not in _doc_text(report_bytes)
 
 
 def test_include_figures_false_skips_figure_embedding_section() -> None:

@@ -264,6 +264,8 @@ def collect_report_figure_export_items(session_state: Any) -> list[ReportFigureE
             available = True
         if key == "pmm_slice_envelope" and context.pmm_slice_envelope_available:
             available = True
+        if key == "pmm_interaction_surface" and _get(session_state, "pmm_interaction_surface_figure") is not None:
+            available = True
         export_ready = key in export_ready_keys or figure.figure_key in export_ready_keys
         warning = figure.warning
         if available and key.startswith("sls") and not context.selected_sls_combo:

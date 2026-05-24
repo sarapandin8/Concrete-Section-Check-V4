@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
+from pathlib import Path
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -83,6 +84,13 @@ def test_report_figure_context_default_creation() -> None:
     assert context.sls_result_available is False
 
 
+def test_requirements_include_kaleido_for_plotly_png_export() -> None:
+    requirements_text = Path("requirements.txt").read_text(encoding="utf-8")
+
+    assert "plotly>=5.22,<6" in requirements_text
+    assert "kaleido==0.2.1" in requirements_text
+
+
 def test_build_report_figure_context_empty_state() -> None:
     context = build_report_figure_context({})
 
@@ -146,6 +154,16 @@ def test_pmm_interaction_surface_not_export_ready_without_dashboard_figure() -> 
 
     assert by_key["pmm_interaction_surface"].available is True
     assert by_key["pmm_interaction_surface"].export_ready is False
+
+
+def test_pmm_interaction_surface_export_ready_with_stored_dashboard_figure() -> None:
+    items = collect_report_figure_export_items(
+        {"pmm_interaction_surface_figure": go.Figure(data=[go.Scatter3d(x=[0, 1], y=[0, 1], z=[0, 1])])}
+    )
+    by_key = {item.figure_key: item for item in items}
+
+    assert by_key["pmm_interaction_surface"].available is True
+    assert by_key["pmm_interaction_surface"].export_ready is True
 
 
 def test_pmm_mux_muy_slice_export_ready_with_slice_dataframe() -> None:

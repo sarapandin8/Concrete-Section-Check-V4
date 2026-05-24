@@ -2,7 +2,7 @@
 
 Professional Streamlit engineering application foundation for reinforced concrete and prestressed concrete PMM analysis.
 
-This repository is at Milestone P.1. The PMM solver and ULS demand/capacity workflow are still prototypes. The app navigation is grouped into engineering workspaces, and the Analysis workspace has real subtabs for ULS / PMM, SLS / Stress & Cracking, and Report / QA. Analysis now includes runtime controls, stable engineering-input hashes, cache status indicators, and lightweight timing diagnostics around expensive UI-triggered operations. Existing Project, Materials, Section Builder, Rebar, Prestress, Loads, PMM, SLS, cracking, report export, and report QA tools remain reachable without changing calculation logic. Bonded prestress contribution is included in the PMM prototype with refined prestressing steel stress-strain models, ordinary rebar displaced-concrete refinement, independent hand-calculation spot checks, engineering verification safeguards, benchmark-style solver checks, refined PMM slice interpolation, slice envelope robustness checks, clearer warning/reporting text, numerical cleanup, elastic SLS stress checks using either gross or uncracked transformed section properties, optional effective bonded prestress contribution, no-tension/decompression serviceability judgement, SLS stress sign benchmark checks, cracking/tension-zone classification from existing SLS stress results, custom SLS stress check points with geometry validation, SLS stress visualization on the section, context-aware engineering limitation filtering, report manifest JSON, draft Word report export, and Word report QA; unbonded prestress, full cracked-section stress redistribution, crack-width checks, Beam/Girder flexure/shear/torsion checks, PDF export, and production-grade design certification are intentionally not implemented yet.
+This repository is at Milestone P.1 plus R.FIG.1.1 figure-export deployment hotfix. The PMM solver and ULS demand/capacity workflow are still prototypes. The app navigation is grouped into engineering workspaces, and the Analysis workspace has real subtabs for ULS / PMM, SLS / Stress & Cracking, and Report / QA. Analysis now includes runtime controls, stable engineering-input hashes, cache status indicators, and lightweight timing diagnostics around expensive UI-triggered operations. Existing Project, Materials, Section Builder, Rebar, Prestress, Loads, PMM, SLS, cracking, report export, and report QA tools remain reachable without changing calculation logic. Bonded prestress contribution is included in the PMM prototype with refined prestressing steel stress-strain models, ordinary rebar displaced-concrete refinement, independent hand-calculation spot checks, engineering verification safeguards, benchmark-style solver checks, refined PMM slice interpolation, slice envelope robustness checks, clearer warning/reporting text, numerical cleanup, elastic SLS stress checks using either gross or uncracked transformed section properties, optional effective bonded prestress contribution, no-tension/decompression serviceability judgement, SLS stress sign benchmark checks, cracking/tension-zone classification from existing SLS stress results, custom SLS stress check points with geometry validation, SLS stress visualization on the section, context-aware engineering limitation filtering, report manifest JSON, draft Word report export, and Word report QA; unbonded prestress, full cracked-section stress redistribution, crack-width checks, Beam/Girder flexure/shear/torsion checks, PDF export, and production-grade design certification are intentionally not implemented yet.
 
 ## Internal Units
 
@@ -10,6 +10,23 @@ This repository is at Milestone P.1. The PMM solver and ULS demand/capacity work
 - Stress: MPa
 - Force: N
 - Moment: N-mm
+
+## Milestone R.FIG.1.1 Scope
+
+- Plotly is constrained to `plotly>=5.22,<6` and Kaleido is pinned to `kaleido==0.2.1` for deployment-friendly Plotly PNG export compatibility with Plotly 5.x environments.
+- Draft Word reports continue to embed export-ready Plotly figures as PNG images when local static image export succeeds.
+- If PNG export fails, the Word report still generates with the existing figure placeholder and Kaleido/detail warning.
+- HTML export fallback remains available.
+- Report export still uses stored results and does not rerun solvers.
+- Existing PMM/SLS solver formulas, sign conventions, D/C logic, report QA, warning propagation, and engineering limitations are unchanged.
+
+## Milestone R.FIG.1 Scope
+
+- Plotly static PNG export for Word report figures now depends on `kaleido>=1.1`.
+- Draft Word reports embed export-ready Plotly figures as PNG images when the local Kaleido/Chrome backend can render them.
+- PMM interaction surface figure export uses an existing stored dashboard figure and does not rerun the PMM solver.
+- If PNG export fails, the Word report still generates with the existing figure placeholder and Kaleido/detail warning.
+- Existing PMM/SLS solver formulas, sign conventions, D/C logic, report QA, warning propagation, and engineering limitations are unchanged.
 
 ## Milestone P.1 Scope
 
