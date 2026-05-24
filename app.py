@@ -50,25 +50,7 @@ def render_loads_workspace() -> None:
 
 
 def render_analysis_workspace() -> None:
-    uls_tab, sls_tab, report_tab = st.tabs(WORKSPACE_NAVIGATION["Analysis"])
-    with uls_tab:
-        st.info(
-            "Current Analysis workspace preserved here for UI.A0. "
-            "It still contains ULS / PMM, SLS stress and cracking tools, verification, report export, and report QA."
-        )
-        render_analysis_page()
-    with sls_tab:
-        st.info(
-            "SLS / Stress & Cracking workspace placeholder for UI.A0. "
-            "Current SLS stress, transformed-section, no-tension/decompression, cracking classification, "
-            "and SLS visualization outputs remain available under Analysis > ULS / PMM."
-        )
-    with report_tab:
-        st.info(
-            "Report / QA workspace placeholder for UI.A0. "
-            "Current report manifest, draft Word export, engineering limitations, and Word Report QA remain available "
-            "under Analysis > ULS / PMM."
-        )
+    render_analysis_page()
 
 
 def render_results_workspace() -> None:
@@ -79,7 +61,7 @@ def main() -> None:
     st.set_page_config(page_title="Concrete PMM Pro", layout="wide")
     st.title("Concrete PMM Pro")
     st.caption(
-        "Milestone UI.A0: Navigation / workspace restructure. "
+        "Milestone P.1: Analysis performance audit and runtime control. "
         "Internal units: mm, MPa, N, N-mm."
     )
 

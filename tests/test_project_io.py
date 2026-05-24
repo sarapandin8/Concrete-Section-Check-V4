@@ -105,7 +105,7 @@ def test_project_to_json_returns_valid_json() -> None:
     parsed = json.loads(json_text)
 
     assert parsed["project_name"] == "Bridge Pier P1"
-    assert parsed["version"] == "UI.A0"
+    assert parsed["version"] == "P.1"
     assert parsed["analysis_mode_settings"]["member_type"] == "general_section"
     assert parsed["include_default_stress_check_points"] is False
     assert parsed["custom_stress_check_points"][1]["active"] is False

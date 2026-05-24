@@ -2,7 +2,7 @@
 
 Professional Streamlit engineering application foundation for reinforced concrete and prestressed concrete PMM analysis.
 
-This repository is at Milestone UI.A0. The PMM solver and ULS demand/capacity workflow are still prototypes. The app navigation is now grouped into engineering workspaces: Setup, Sections, Loads, Analysis, and Results. Existing Project, Materials, Section Builder, Rebar, Prestress, Loads, and Analysis tools remain reachable, with the current Analysis workspace preserved under Analysis > ULS / PMM and placeholder subtabs for future SLS / Stress & Cracking and Report / QA workspace splits. Bonded prestress contribution is included in the PMM prototype with refined prestressing steel stress-strain models, ordinary rebar displaced-concrete refinement, independent hand-calculation spot checks, engineering verification safeguards, benchmark-style solver checks, refined PMM slice interpolation, slice envelope robustness checks, clearer warning/reporting text, numerical cleanup, elastic SLS stress checks using either gross or uncracked transformed section properties, optional effective bonded prestress contribution, no-tension/decompression serviceability judgement, SLS stress sign benchmark checks, cracking/tension-zone classification from existing SLS stress results, custom SLS stress check points with geometry validation, SLS stress visualization on the section, context-aware engineering limitation filtering, report manifest JSON, draft Word report export, and Word report QA; unbonded prestress, full cracked-section stress redistribution, crack-width checks, Beam/Girder flexure/shear/torsion checks, PDF export, and production-grade design certification are intentionally not implemented yet.
+This repository is at Milestone P.1. The PMM solver and ULS demand/capacity workflow are still prototypes. The app navigation is grouped into engineering workspaces, and the Analysis workspace has real subtabs for ULS / PMM, SLS / Stress & Cracking, and Report / QA. Analysis now includes runtime controls, stable engineering-input hashes, cache status indicators, and lightweight timing diagnostics around expensive UI-triggered operations. Existing Project, Materials, Section Builder, Rebar, Prestress, Loads, PMM, SLS, cracking, report export, and report QA tools remain reachable without changing calculation logic. Bonded prestress contribution is included in the PMM prototype with refined prestressing steel stress-strain models, ordinary rebar displaced-concrete refinement, independent hand-calculation spot checks, engineering verification safeguards, benchmark-style solver checks, refined PMM slice interpolation, slice envelope robustness checks, clearer warning/reporting text, numerical cleanup, elastic SLS stress checks using either gross or uncracked transformed section properties, optional effective bonded prestress contribution, no-tension/decompression serviceability judgement, SLS stress sign benchmark checks, cracking/tension-zone classification from existing SLS stress results, custom SLS stress check points with geometry validation, SLS stress visualization on the section, context-aware engineering limitation filtering, report manifest JSON, draft Word report export, and Word report QA; unbonded prestress, full cracked-section stress redistribution, crack-width checks, Beam/Girder flexure/shear/torsion checks, PDF export, and production-grade design certification are intentionally not implemented yet.
 
 ## Internal Units
 
@@ -10,6 +10,28 @@ This repository is at Milestone UI.A0. The PMM solver and ULS demand/capacity wo
 - Stress: MPa
 - Force: N
 - Moment: N-mm
+
+## Milestone P.1 Scope
+
+- ULS / PMM includes an `Analysis Runtime Control` panel with Fast, Standard, and High Accuracy presets.
+- Fast, Standard, and High Accuracy wire to existing neutral-axis angle/depth resolution controls; Standard matches the previous default resolution.
+- PMM analysis uses a stable engineering-input hash and reuses cached PMM results when the hash is unchanged.
+- Hash inputs include section geometry, holes, materials, rebar, prestress/PT bar data, bonded/unbonded flags, effective prestress values, load cases, relevant analysis settings, and the selected accuracy preset.
+- Hash inputs intentionally exclude UI-only notes, labels, generated prestress ids, section metadata, selected tabs, report preview options, and plot display state.
+- D/C summaries are cached against the PMM result hash to avoid silent recomputation on UI reruns.
+- SLS stress checks store a serviceability input hash and can reuse cached SLS results when serviceability inputs are unchanged.
+- Runtime diagnostics record elapsed time for PMM interaction generation, D/C evaluation, SLS stress calculation, PMM/SLS figure generation, and Word/report export.
+- Stale PMM/SLS results are warned when engineering inputs change after the last run.
+- Existing PMM/SLS formulas, prestress sign convention, D/C algorithm, report export/QA logic, engineering limitations, warning propagation, materials, loads, and result values for the same settings are unchanged.
+
+## Milestone UI.1 Scope
+
+- Analysis now has real subtabs: ULS / PMM, SLS / Stress & Cracking, and Report / QA.
+- ULS / PMM contains the existing analysis mode controls, analysis settings, readiness panel, PMM run workflow, PMM plots, D/C output, PMM warnings, and PMM verification/hand checks.
+- SLS / Stress & Cracking contains the existing serviceability settings, transformed/gross SLS stress check, custom stress points, no-tension/decompression checks, cracking classification, SLS visualization, and SLS benchmark checks.
+- Report / QA contains the existing pre-report traceability, readiness, engineering warnings, limitations, report manifest, figure export registry, draft Word export, and Word report QA tools.
+- Results remains a future workspace placeholder only.
+- Existing PMM/SLS calculations, prestress sign convention, D/C algorithm, report export/QA logic, engineering limitations, warning propagation, materials, loads, and session state data are unchanged.
 
 ## Milestone UI.A0 Scope
 

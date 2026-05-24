@@ -19,6 +19,15 @@ def test_analysis_workspace_contains_required_subtabs() -> None:
     assert app.WORKSPACE_NAVIGATION["Analysis"] == ["ULS / PMM", "SLS / Stress & Cracking", "Report / QA"]
 
 
+def test_analysis_page_exports_real_subtab_render_functions() -> None:
+    from concrete_pmm_pro.ui import analysis_page
+
+    assert analysis_page.ANALYSIS_SUBTABS == ["ULS / PMM", "SLS / Stress & Cracking", "Report / QA"]
+    assert callable(analysis_page.render_analysis_uls_pmm)
+    assert callable(analysis_page.render_analysis_sls_stress)
+    assert callable(analysis_page.render_analysis_report_qa)
+
+
 def test_results_workspace_placeholder_text_names_future_workspace() -> None:
     assert "Future Results Workspace" in app.RESULTS_WORKSPACE_PLACEHOLDER
     assert "Current result outputs remain available under Analysis" in app.RESULTS_WORKSPACE_PLACEHOLDER

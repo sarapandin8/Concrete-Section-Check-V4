@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 
 import plotly.graph_objects as go
 import pandas as pd
@@ -22,6 +23,15 @@ from concrete_pmm_pro.analysis.result_models import (
     check_pmm_dataframe_numerics,
     pmm_result_to_display_dataframe,
     summarize_pmm_result,
+)
+from concrete_pmm_pro.analysis.runtime import (
+    ACCURACY_PRESET_RESOLUTIONS,
+    RuntimeTiming,
+    accuracy_preset_resolution,
+    analysis_input_hash,
+    cache_status_for_hash,
+    serviceability_input_hash,
+    timed_call,
 )
 from concrete_pmm_pro.analysis.slice_envelope import build_slice_envelope
 from concrete_pmm_pro.analysis.warnings import (
@@ -120,6 +130,8 @@ from concrete_pmm_pro.verification.sls_benchmarks import (
     sls_benchmark_summary_to_dataframe,
 )
 
+ANALYSIS_SUBTABS = ["ULS / PMM", "SLS / Stress & Cracking", "Report / QA"]
+
 
 def _settings_from_session() -> AnalysisSettings:
     value = st.session_state.get("analysis_settings")
@@ -128,6 +140,47 @@ def _settings_from_session() -> AnalysisSettings:
     if isinstance(value, dict):
         return AnalysisSettings.model_validate(value)
     return AnalysisSettings()
+
+
+def _analysis_accuracy_preset_from_session() -> str:
+    value = st.session_state.get("analysis_accuracy_preset")
+    if value in ACCURACY_PRESET_RESOLUTIONS:
+        return str(value)
+    return "Standard"
+
+
+def _record_runtime_timing(timing: RuntimeTiming) -> None:
+    timings = st.session_state.get("analysis_runtime_timings")
+    if not isinstance(timings, dict):
+        timings = {}
+    timings[timing.label] = timing.elapsed_seconds
+    st.session_state["analysis_runtime_timings"] = timings
+
+
+def _runtime_timings_dataframe() -> pd.DataFrame:
+    timings = st.session_state.get("analysis_runtime_timings")
+    if not isinstance(timings, dict) or not timings:
+        return pd.DataFrame(columns=["Operation", "Elapsed Seconds"])
+    return pd.DataFrame(
+        [
+            {"Operation": label, "Elapsed Seconds": elapsed}
+            for label, elapsed in timings.items()
+        ],
+        columns=["Operation", "Elapsed Seconds"],
+    )
+
+
+def _render_runtime_diagnostics_expander() -> None:
+    with st.expander("Runtime Diagnostics", expanded=False):
+        st.info(
+            "Timing diagnostics measure UI-triggered expensive operations only. "
+            "They do not change PMM/SLS formulas, sign conventions, or engineering results."
+        )
+        timings_df = _runtime_timings_dataframe()
+        if timings_df.empty:
+            st.info("No timed operations have been recorded in this session.")
+        else:
+            st.dataframe(timings_df, use_container_width=True, hide_index=True)
 
 
 def _analysis_mode_from_session() -> AnalysisModeSettings:
@@ -338,6 +391,135 @@ def _render_prestress_verification_summary(
         st.warning(f"WARNING: {warning}")
 
 
+def _run_pmm_analysis_with_runtime_control(
+    analysis_input: AnalysisInput,
+    settings: AnalysisSettings,
+    bonded_prestress_elements: list,
+    current_hash: str,
+    accuracy_preset: str,
+) -> None:
+    cached_result = st.session_state.get("rc_pmm_result")
+    cached_hash = st.session_state.get("pmm_last_analysis_hash")
+    force_recalculate = bool(st.session_state.get("analysis_force_recalculate", False))
+    if not force_recalculate and isinstance(cached_result, PMMSolverResult) and cached_hash == current_hash:
+        st.session_state["analysis_runtime_cache_status"] = "Cached result used"
+        st.session_state["analysis_runtime_last_status"] = "Cached result used"
+        return
+
+    result, pmm_timing = timed_call("PMM interaction generation", run_rc_pmm_solver, analysis_input)
+    _record_runtime_timing(pmm_timing)
+    timings = [pmm_timing]
+    st.session_state["rc_pmm_result"] = result
+    st.session_state["rc_pmm_result_input_hash"] = current_hash
+    st.session_state["pmm_last_analysis_hash"] = current_hash
+
+    if settings.include_prestress and bonded_prestress_elements:
+        rc_only_input = analysis_input.model_copy(deep=True)
+        rc_only_input.settings = analysis_input.settings.model_copy(update={"include_prestress": False})
+        rc_only_result, comparison_timing = timed_call("RC-only comparison PMM generation", run_rc_pmm_solver, rc_only_input)
+        _record_runtime_timing(comparison_timing)
+        timings.append(comparison_timing)
+        st.session_state["rc_only_comparison_result"] = rc_only_result
+        st.session_state["prestress_comparison_summary"] = compare_rc_vs_prestress_pmm(rc_only_result, result)
+    else:
+        st.session_state.pop("rc_only_comparison_result", None)
+        st.session_state.pop("prestress_comparison_summary", None)
+
+    st.session_state["analysis_runtime_last_status"] = "Recalculated"
+    st.session_state["analysis_runtime_cache_status"] = "Recalculated"
+    st.session_state["analysis_runtime_last_time_seconds"] = sum(timing.elapsed_seconds for timing in timings)
+    st.session_state["analysis_runtime_last_run_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    st.session_state["analysis_runtime_last_preset"] = accuracy_preset
+    st.session_state.pop("rc_demand_capacity_result", None)
+    st.session_state.pop("rc_demand_capacity_result_hash", None)
+
+
+def _render_pmm_runtime_control_panel(
+    analysis_input: AnalysisInput | None,
+    settings: AnalysisSettings,
+    bonded_prestress_elements: list,
+    prototype_label: str,
+) -> str | None:
+    preset = _analysis_accuracy_preset_from_session()
+    current_hash = analysis_input_hash(analysis_input, preset) if analysis_input is not None else None
+    has_cached_result = isinstance(st.session_state.get("rc_pmm_result"), PMMSolverResult)
+    cached_hash = st.session_state.get("pmm_last_analysis_hash")
+    cache_status = cache_status_for_hash(current_hash, cached_hash, has_cached_result)
+    if st.session_state.get("analysis_runtime_cache_status") != "Recalculated":
+        st.session_state["analysis_runtime_cache_status"] = cache_status
+
+    with st.expander("Analysis Runtime Control", expanded=True):
+        st.info(
+            "Runtime controls manage when existing PMM calculations run. "
+            "They do not change solver equations or engineering sign conventions."
+        )
+        preset_options = list(ACCURACY_PRESET_RESOLUTIONS.keys())
+        st.selectbox(
+            "Accuracy preset",
+            preset_options,
+            index=preset_options.index(preset),
+            key="analysis_accuracy_preset",
+            help="Fast lowers the existing neutral-axis sweep resolution; Standard matches current defaults; High Accuracy increases sweep resolution.",
+        )
+
+        resolution = accuracy_preset_resolution(st.session_state.get("analysis_accuracy_preset", preset))
+        st.caption(
+            "Preset resolution: "
+            f"{resolution['neutral_axis_angle_steps']} angle steps x {resolution['neutral_axis_depth_steps']} depth steps."
+        )
+        if st.session_state.get("analysis_accuracy_preset") == "High Accuracy":
+            st.warning("High Accuracy increases neutral-axis sweep resolution and may significantly increase runtime.")
+        if cache_status == "Input changed, recalculation required":
+            st.warning("Engineering inputs have changed since the cached PMM result. Recalculate before using displayed results.")
+        st.checkbox("Force recalculation even if cached", value=False, key="analysis_force_recalculate")
+        run_clicked = st.button(
+            "Run / Recalculate Analysis",
+            disabled=analysis_input is None,
+            help=f"Runs or reuses the cached {prototype_label} result depending on the engineering input hash.",
+            use_container_width=True,
+        )
+
+        if run_clicked and analysis_input is not None and current_hash is not None:
+            _run_pmm_analysis_with_runtime_control(
+                analysis_input,
+                settings,
+                bonded_prestress_elements,
+                current_hash,
+                st.session_state.get("analysis_accuracy_preset", preset),
+            )
+            cache_status = cache_status_for_hash(
+                current_hash,
+                st.session_state.get("pmm_last_analysis_hash"),
+                isinstance(st.session_state.get("rc_pmm_result"), PMMSolverResult),
+            )
+            cache_status = st.session_state.get("analysis_runtime_cache_status", cache_status)
+
+        status_cols = st.columns(3)
+        status_cols[0].metric("Last run status", st.session_state.get("analysis_runtime_last_status", "Not run"))
+        last_time = st.session_state.get("analysis_runtime_last_time_seconds")
+        status_cols[1].metric("Last run time", "N/A" if last_time is None else f"{float(last_time):.2f} s")
+        status_cols[2].metric("Result cache status", cache_status)
+    return current_hash
+
+
+def _get_or_compute_demand_capacity_summary(
+    result: PMMSolverResult,
+    load_cases: list,
+    result_hash: str | None,
+) -> DemandCapacitySummary:
+    cached_summary = st.session_state.get("rc_demand_capacity_result")
+    cached_hash = st.session_state.get("rc_demand_capacity_result_hash")
+    if result_hash is not None and isinstance(cached_summary, DemandCapacitySummary) and cached_hash == result_hash:
+        st.session_state["analysis_runtime_dc_cache_status"] = "Cached D/C result used"
+        return cached_summary
+    summary, timing = timed_call("Demand/capacity evaluation", check_uls_demands_against_rc_pmm, result, load_cases)
+    _record_runtime_timing(timing)
+    st.session_state["rc_demand_capacity_result"] = summary
+    st.session_state["rc_demand_capacity_result_hash"] = result_hash
+    st.session_state["analysis_runtime_dc_cache_status"] = "Recalculated"
+    return summary
+
+
 def _render_input_summary() -> None:
     settings = _settings_from_session()
     mode_settings = _analysis_mode_from_session()
@@ -414,27 +596,18 @@ def _render_input_summary() -> None:
 
     _render_prestress_check_panel(prestress_check_summary, settings.include_prestress)
 
-    run_clicked = st.button(
-        f"Run {prototype_label}",
-        disabled=analysis_input is None,
-        help="Runs the PMM prototype review workflow.",
-        use_container_width=True,
+    current_analysis_hash = _render_pmm_runtime_control_panel(
+        analysis_input,
+        settings,
+        bonded_prestress_elements,
+        prototype_label,
     )
-    if run_clicked and analysis_input is not None:
-        result = run_rc_pmm_solver(analysis_input)
-        st.session_state["rc_pmm_result"] = result
-        if settings.include_prestress and bonded_prestress_elements:
-            rc_only_input = analysis_input.model_copy(deep=True)
-            rc_only_input.settings = analysis_input.settings.model_copy(update={"include_prestress": False})
-            rc_only_result = run_rc_pmm_solver(rc_only_input)
-            st.session_state["rc_only_comparison_result"] = rc_only_result
-            st.session_state["prestress_comparison_summary"] = compare_rc_vs_prestress_pmm(rc_only_result, result)
-        else:
-            st.session_state.pop("rc_only_comparison_result", None)
-            st.session_state.pop("prestress_comparison_summary", None)
 
     result = st.session_state.get("rc_pmm_result")
     if isinstance(result, PMMSolverResult):
+        result_hash = st.session_state.get("rc_pmm_result_input_hash")
+        if current_analysis_hash is not None and result_hash != current_analysis_hash:
+            st.warning("Displayed PMM results are stale because engineering inputs have changed. Run / Recalculate Analysis to update them.")
         result_has_bonded_prestress = any(point.bonded_prestress_count > 0 for point in result.points)
         result_label = "RC + Bonded Prestress PMM Prototype" if result_has_bonded_prestress else "RC PMM Prototype"
         st.subheader(f"{result_label} Result")
@@ -522,8 +695,11 @@ def _render_input_summary() -> None:
             )
             st.dataframe(demand_df, use_container_width=True, hide_index=True)
 
-            dc_summary = check_uls_demands_against_rc_pmm(result, st.session_state.get("load_cases", []))
-            st.session_state["rc_demand_capacity_result"] = dc_summary
+            dc_summary = _get_or_compute_demand_capacity_summary(
+                result,
+                st.session_state.get("load_cases", []),
+                result_hash,
+            )
             _render_demand_capacity_summary(dc_summary)
             _render_engineering_warnings(
                 _collect_engineering_warnings(
@@ -544,6 +720,7 @@ def _render_input_summary() -> None:
                 settings.include_prestress,
                 result_has_bonded_prestress,
                 unbonded_ignored_count,
+                result_hash,
             )
 
             with st.expander("Detailed PMM Plots", expanded=False):
@@ -631,6 +808,7 @@ def _render_pmm_slice_dashboard(
     include_prestress: bool,
     bonded_prestress_included: bool,
     unbonded_ignored_count: int,
+    result_hash: str | None,
 ) -> None:
     st.subheader("PMM Slice Dashboard")
     st.warning(
@@ -721,7 +899,23 @@ def _render_pmm_slice_dashboard(
     demand_df = demand_load_cases_to_display_dataframe(active_uls)
     left, right = st.columns([2.1, 1.0])
     with left:
-        slice_fig = make_mux_muy_slice_figure(pmm_df, selected_load_case, dc_summary)
+        slice_figure_hash = f"{result_hash or 'unhashed'}:{selected_load_case.name}:mux_muy_slice"
+        if (
+            st.session_state.get("pmm_mux_muy_slice_figure_hash") == slice_figure_hash
+            and isinstance(st.session_state.get("pmm_mux_muy_slice_figure"), go.Figure)
+        ):
+            slice_fig = st.session_state.get("pmm_mux_muy_slice_figure")
+        else:
+            slice_fig, slice_timing = timed_call(
+                "PMM Mux-Muy slice figure generation",
+                make_mux_muy_slice_figure,
+                pmm_df,
+                selected_load_case,
+                dc_summary,
+            )
+            _record_runtime_timing(slice_timing)
+            st.session_state["pmm_mux_muy_slice_figure"] = slice_fig
+            st.session_state["pmm_mux_muy_slice_figure_hash"] = slice_figure_hash
         st.session_state["pmm_mux_muy_slice_figure"] = slice_fig
         st.plotly_chart(
             slice_fig,
@@ -740,8 +934,24 @@ def _render_pmm_slice_dashboard(
 
     show_3d = st.checkbox("Show 3D PMM interaction surface", value=True)
     if show_3d:
-        surface_fig = make_pmm_3d_dashboard_figure(pmm_df, demand_df, selected_load_case, dc_summary)
-        st.session_state["pmm_interaction_surface_figure"] = surface_fig
+        surface_figure_hash = f"{result_hash or 'unhashed'}:{selected_load_case.name}:pmm_3d"
+        if (
+            st.session_state.get("pmm_interaction_surface_figure_hash") == surface_figure_hash
+            and isinstance(st.session_state.get("pmm_interaction_surface_figure"), go.Figure)
+        ):
+            surface_fig = st.session_state.get("pmm_interaction_surface_figure")
+        else:
+            surface_fig, surface_timing = timed_call(
+                "3D PMM Plotly figure generation",
+                make_pmm_3d_dashboard_figure,
+                pmm_df,
+                demand_df,
+                selected_load_case,
+                dc_summary,
+            )
+            _record_runtime_timing(surface_timing)
+            st.session_state["pmm_interaction_surface_figure"] = surface_fig
+            st.session_state["pmm_interaction_surface_figure_hash"] = surface_figure_hash
         st.plotly_chart(
             surface_fig,
             use_container_width=True,
@@ -1386,16 +1596,43 @@ def _render_serviceability_expander() -> None:
                 "concrete stress points. Member-level tendon-zone decompression is future work."
             )
         st.warning("Cracked section and crack width checks are future work.")
+        current_sls_hash = serviceability_input_hash(
+            analysis_input,
+            settings,
+            point_parse.points,
+            include_default_stress_check_points,
+        )
+        sls_cache_status = cache_status_for_hash(
+            current_sls_hash,
+            st.session_state.get("serviceability_summary_hash"),
+            st.session_state.get("serviceability_summary") is not None,
+        )
+        st.caption(f"SLS result cache status: {sls_cache_status}")
         if st.button("Run Elastic SLS Stress Check", use_container_width=True, disabled=not stress_check_points_valid):
-            st.session_state["serviceability_summary"] = run_elastic_sls_stress_check(
-                analysis_input,
-                settings,
-                custom_stress_check_points=point_parse.points,
-                include_default_stress_check_points=include_default_stress_check_points,
-            )
+            existing_summary = st.session_state.get("serviceability_summary")
+            if (
+                existing_summary is not None
+                and st.session_state.get("serviceability_summary_hash") == current_sls_hash
+            ):
+                st.session_state["serviceability_runtime_cache_status"] = "Cached result used"
+            else:
+                stress_summary, sls_timing = timed_call(
+                    "SLS stress calculation",
+                    run_elastic_sls_stress_check,
+                    analysis_input,
+                    settings,
+                    custom_stress_check_points=point_parse.points,
+                    include_default_stress_check_points=include_default_stress_check_points,
+                )
+                _record_runtime_timing(sls_timing)
+                st.session_state["serviceability_summary"] = stress_summary
+                st.session_state["serviceability_summary_hash"] = current_sls_hash
+                st.session_state["serviceability_runtime_cache_status"] = "Recalculated"
 
         stress_summary = st.session_state.get("serviceability_summary")
         if stress_summary is not None and getattr(stress_summary, "stress_results", None):
+            if st.session_state.get("serviceability_summary_hash") != current_sls_hash:
+                st.warning("Displayed SLS results are stale because serviceability inputs changed. Run Elastic SLS Stress Check to update them.")
             metric_cols = st.columns(6)
             metric_cols[0].metric("Overall SLS Status", stress_summary.overall_status)
             metric_cols[1].metric("Governing Combo", stress_summary.governing_combo or "N/A")
@@ -1502,17 +1739,28 @@ def _render_serviceability_expander() -> None:
                 show_sls_labels = viz_cols[1].checkbox("Show point labels", value=True)
                 show_sls_bar = viz_cols[2].checkbox("Show stress bar diagram", value=True)
                 plot_df = service_stress_results_to_plot_dataframe(stress_summary, crack_summary, selected_sls_combo)
+                section_fig, section_fig_timing = timed_call(
+                    "SLS section stress figure generation",
+                    make_sls_section_stress_figure,
+                    analysis_input.section_geometry,
+                    plot_df,
+                    selected_sls_combo,
+                    show_labels=show_sls_labels,
+                )
+                _record_runtime_timing(section_fig_timing)
                 st.plotly_chart(
-                    make_sls_section_stress_figure(
-                        analysis_input.section_geometry,
-                        plot_df,
-                        selected_sls_combo,
-                        show_labels=show_sls_labels,
-                    ),
+                    section_fig,
                     use_container_width=True,
                 )
                 if show_sls_bar:
-                    st.plotly_chart(make_sls_stress_bar_figure(plot_df, selected_sls_combo), use_container_width=True)
+                    bar_fig, bar_fig_timing = timed_call(
+                        "SLS stress bar figure generation",
+                        make_sls_stress_bar_figure,
+                        plot_df,
+                        selected_sls_combo,
+                    )
+                    _record_runtime_timing(bar_fig_timing)
+                    st.plotly_chart(bar_fig, use_container_width=True)
                 st.download_button(
                     "Download Selected SLS Stress Visualization CSV",
                     data=plot_df.to_csv(index=False),
@@ -1785,11 +2033,15 @@ def _render_pre_report_qa_expander() -> None:
                 include_full_terminology=include_full_terminology,
                 include_full_registries=include_full_registries,
             )
-            st.session_state["draft_word_report_bytes"] = build_draft_word_report(
+            report_bytes, report_timing = timed_call(
+                "Word/report export",
+                build_draft_word_report,
                 manifest_for_docx,
                 st.session_state,
                 options=options,
             )
+            _record_runtime_timing(report_timing)
+            st.session_state["draft_word_report_bytes"] = report_bytes
         report_bytes = st.session_state.get("draft_word_report_bytes")
         if report_bytes:
             st.download_button(
@@ -1851,11 +2103,17 @@ def _render_pre_report_qa_expander() -> None:
         st.warning("PDF export and final certified report templates are future work.")
 
 
-def render_analysis_page() -> None:
-    st.subheader("Analysis")
+def _render_analysis_settings_panel() -> None:
     current = _settings_from_session()
-
-    _render_analysis_mode_section()
+    preset = _analysis_accuracy_preset_from_session()
+    preset_resolution = accuracy_preset_resolution(preset)
+    if st.session_state.get("analysis_runtime_last_preset_applied") != preset:
+        st.session_state["analysis_neutral_axis_angle_steps"] = preset_resolution["neutral_axis_angle_steps"]
+        st.session_state["analysis_neutral_axis_depth_steps"] = preset_resolution["neutral_axis_depth_steps"]
+        st.session_state["analysis_runtime_last_preset_applied"] = preset
+    else:
+        st.session_state.setdefault("analysis_neutral_axis_angle_steps", int(current.neutral_axis_angle_steps))
+        st.session_state.setdefault("analysis_neutral_axis_depth_steps", int(current.neutral_axis_depth_steps))
 
     with st.expander("Analysis Settings", expanded=True):
         cols = st.columns(3)
@@ -1893,16 +2151,17 @@ def render_analysis_page() -> None:
             neutral_axis_angle_steps = st.number_input(
                 "Neutral axis angle steps",
                 min_value=12,
-                value=int(current.neutral_axis_angle_steps),
                 step=1,
+                key="analysis_neutral_axis_angle_steps",
             )
             neutral_axis_depth_steps = st.number_input(
                 "Neutral axis depth steps",
                 min_value=10,
-                value=int(current.neutral_axis_depth_steps),
                 step=1,
+                key="analysis_neutral_axis_depth_steps",
             )
             compression_positive = st.checkbox("Compression positive", value=current.compression_positive)
+            st.caption(f"Current accuracy preset: {preset}.")
         note = st.text_area("Analysis note", value=current.note or "", height=80)
 
     settings = AnalysisSettings(
@@ -1922,9 +2181,40 @@ def render_analysis_page() -> None:
     )
     st.session_state["analysis_settings"] = settings
 
+
+def render_analysis_uls_pmm() -> None:
+    st.subheader("ULS / PMM")
+    st.info(
+        "ULS compression Pu remains positive. Prestress is treated as internal prestress/reinforcement action "
+        "and should not be duplicated as external Pu demand."
+    )
+    _render_analysis_mode_section()
+    _render_analysis_settings_panel()
     _render_readiness_panel()
-    _render_serviceability_expander()
     _render_input_summary()
     _render_verification_expander()
+
+
+def render_analysis_sls_stress() -> None:
+    st.subheader("SLS / Stress & Cracking")
+    st.info("SLS stress convention: compression is negative and tension is positive.")
+    _render_serviceability_expander()
     _render_sls_verification_expander()
+
+
+def render_analysis_report_qa() -> None:
+    st.subheader("Report / QA")
+    st.info("Report and QA tools summarize stored results only; they do not rerun PMM, SLS, or verification solvers.")
     _render_pre_report_qa_expander()
+
+
+def render_analysis_page() -> None:
+    st.subheader("Analysis")
+    uls_tab, sls_tab, report_tab = st.tabs(ANALYSIS_SUBTABS)
+    with uls_tab:
+        render_analysis_uls_pmm()
+    with sls_tab:
+        render_analysis_sls_stress()
+    with report_tab:
+        render_analysis_report_qa()
+    _render_runtime_diagnostics_expander()
