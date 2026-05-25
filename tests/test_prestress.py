@@ -259,6 +259,30 @@ def test_tendon_group_display_diameter_uses_total_steel_area_not_diameter() -> N
     assert display_diameter_for_prestress_element(element) == pytest.approx(46.27, abs=0.03)
 
 
+def test_tendon_group_preview_circle_uses_true_scale_total_steel_area() -> None:
+    element = PrestressElement(
+        x_mm=100.0,
+        y_mm=-50.0,
+        area_mm2=140.0,
+        diameter_mm=120.0,
+        steel_type="tendon_group",
+        count=12,
+        label="12 strand tendon",
+    )
+    fig = create_section_preview(rectangle(width_mm=400, height_mm=400), prestress_elements=[element])
+
+    shape = fig.layout.shapes[0]
+    assert shape.type == "circle"
+    assert shape.xref == "x"
+    assert shape.yref == "y"
+    assert (shape.x1 - shape.x0) / 2.0 == pytest.approx(23.13, abs=0.03)
+    assert (shape.y1 - shape.y0) / 2.0 == pytest.approx(23.13, abs=0.03)
+    assert shape.x0 == pytest.approx(100.0 - 23.13, abs=0.03)
+    assert shape.x1 == pytest.approx(100.0 + 23.13, abs=0.03)
+    assert shape.y0 == pytest.approx(-50.0 - 23.13, abs=0.03)
+    assert shape.y1 == pytest.approx(-50.0 + 23.13, abs=0.03)
+
+
 def test_prestress_preview_uses_circle_markers_and_type_colors() -> None:
     strand = PrestressElement(x_mm=-50, y_mm=0, area_mm2=140.0, diameter_mm=15.2, steel_type="strand", label="Strand")
     pt_bar = PrestressElement(x_mm=50, y_mm=0, area_mm2=804.2, diameter_mm=32.0, steel_type="prestressing_bar", label="PT Bar")
@@ -268,6 +292,7 @@ def test_prestress_preview_uses_circle_markers_and_type_colors() -> None:
     assert traces["Prestressing strand/tendon"].marker.symbol == "circle"
     assert traces["PT bar"].marker.symbol == "circle"
     assert traces["Prestressing strand/tendon"].marker.color != traces["PT bar"].marker.color
+    assert len(fig.layout.shapes) == 2
 
 
 def test_prestress_summary_includes_total_area_and_total_force() -> None:

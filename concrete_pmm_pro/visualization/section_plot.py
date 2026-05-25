@@ -37,12 +37,21 @@ def _prestress_display_group(element: PrestressElement) -> tuple[str, str, str]:
     return "Prestress steel", "#0f766e", "#ecfeff"
 
 
-def _marker_size_from_diameter(diameter_mm: float | None) -> float:
-    # Marker size is intentionally display-scaled and clamped for readability;
-    # hover text keeps the true steel diameter and area values visible.
-    if diameter_mm is None:
-        return 10.0
-    return max(8.0, min(28.0, diameter_mm * 0.7))
+def _add_prestress_circle_shape(fig: go.Figure, element: PrestressElement, diameter_mm: float, color: str, outline: str) -> None:
+    radius = diameter_mm / 2.0
+    fig.add_shape(
+        type="circle",
+        xref="x",
+        yref="y",
+        x0=element.x_mm - radius,
+        x1=element.x_mm + radius,
+        y0=element.y_mm - radius,
+        y1=element.y_mm + radius,
+        fillcolor=color,
+        opacity=0.34,
+        line=dict(color=outline, width=1.4),
+        layer="above",
+    )
 
 
 def create_section_preview(
@@ -157,6 +166,8 @@ def create_section_preview(
                     f"f_init={(element.initial_stress_mpa or 0.0):.1f} MPa<br>"
                     f"{'bonded' if element.bonded else 'unbonded'}"
                 )
+                if display_diameter is not None:
+                    _add_prestress_circle_shape(fig, element, display_diameter, color, outline)
             fig.add_trace(
                 go.Scatter(
                     x=[element.x_mm for element in elements],
@@ -164,7 +175,9 @@ def create_section_preview(
                     mode="markers",
                     marker=dict(
                         symbol="circle",
-                        size=[_marker_size_from_diameter(diameter) for diameter in display_diameters],
+                        # The true steel area is drawn with coordinate-unit circle
+                        # shapes; this small marker preserves hover and legend.
+                        size=7,
                         color=color,
                         line=dict(color=outline, width=1.5),
                     ),
