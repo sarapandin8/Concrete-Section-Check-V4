@@ -16,6 +16,7 @@ from typing import Any, Callable, Literal, TypeVar
 from pydantic import BaseModel
 
 from concrete_pmm_pro.core.analysis import AnalysisInput, AnalysisSettings
+from concrete_pmm_pro.core.models import LoadCase
 
 AccuracyPreset = Literal["Fast", "Standard", "High Accuracy"]
 
@@ -111,6 +112,34 @@ def serviceability_input_hash(
             "serviceability_settings": serviceability_settings,
             "custom_stress_check_points": custom_stress_check_points or [],
             "include_default_stress_check_points": include_default_stress_check_points,
+        }
+    )
+
+
+def demand_capacity_input_hash(
+    pmm_result_hash: str | None,
+    load_cases: list[LoadCase],
+    strength_load_type: str = "ULS",
+) -> str:
+    """Hash PMM capacity identity plus active demand cases used by D/C checks."""
+
+    active_demands = [
+        {
+            "name": load_case.name,
+            "Pu_N": load_case.Pu_N,
+            "Mux_Nmm": load_case.Mux_Nmm,
+            "Muy_Nmm": load_case.Muy_Nmm,
+            "load_type": load_case.load_type,
+            "active": load_case.active,
+        }
+        for load_case in load_cases
+        if load_case.active and load_case.load_type == strength_load_type
+    ]
+    return stable_hash_from_payload(
+        {
+            "pmm_result_hash": pmm_result_hash,
+            "strength_load_type": strength_load_type,
+            "active_demands": active_demands,
         }
     )
 

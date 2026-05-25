@@ -30,6 +30,7 @@ from concrete_pmm_pro.analysis.runtime import (
     accuracy_preset_resolution,
     analysis_input_hash,
     cache_status_for_hash,
+    demand_capacity_input_hash,
     serviceability_input_hash,
     timed_call,
 )
@@ -432,6 +433,8 @@ def _run_pmm_analysis_with_runtime_control(
     st.session_state["analysis_runtime_last_preset"] = accuracy_preset
     st.session_state.pop("rc_demand_capacity_result", None)
     st.session_state.pop("rc_demand_capacity_result_hash", None)
+    st.session_state.pop("rc_demand_capacity_input_hash", None)
+    st.session_state.pop("rc_demand_capacity_pmm_result_hash", None)
 
 
 def _render_pmm_runtime_control_panel(
@@ -507,15 +510,20 @@ def _get_or_compute_demand_capacity_summary(
     load_cases: list,
     result_hash: str | None,
 ) -> DemandCapacitySummary:
+    dc_hash = demand_capacity_input_hash(result_hash, load_cases)
     cached_summary = st.session_state.get("rc_demand_capacity_result")
-    cached_hash = st.session_state.get("rc_demand_capacity_result_hash")
-    if result_hash is not None and isinstance(cached_summary, DemandCapacitySummary) and cached_hash == result_hash:
+    cached_hash = st.session_state.get("rc_demand_capacity_input_hash")
+    if cached_hash is None:
+        cached_hash = st.session_state.get("rc_demand_capacity_result_hash")
+    if result_hash is not None and isinstance(cached_summary, DemandCapacitySummary) and cached_hash == dc_hash:
         st.session_state["analysis_runtime_dc_cache_status"] = "Cached D/C result used"
         return cached_summary
     summary, timing = timed_call("Demand/capacity evaluation", check_uls_demands_against_rc_pmm, result, load_cases)
     _record_runtime_timing(timing)
     st.session_state["rc_demand_capacity_result"] = summary
-    st.session_state["rc_demand_capacity_result_hash"] = result_hash
+    st.session_state["rc_demand_capacity_result_hash"] = dc_hash
+    st.session_state["rc_demand_capacity_input_hash"] = dc_hash
+    st.session_state["rc_demand_capacity_pmm_result_hash"] = result_hash
     st.session_state["analysis_runtime_dc_cache_status"] = "Recalculated"
     return summary
 

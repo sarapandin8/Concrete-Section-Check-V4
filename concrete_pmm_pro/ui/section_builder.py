@@ -68,11 +68,10 @@ def render_section_builder() -> None:
     label_mode_label = st.selectbox("Dimension label mode", ["Symbol + Value", "Symbol only", "Value only"], index=0)
     label_mode = {"Symbol + Value": "symbol_value", "Symbol only": "symbol", "Value only": "value"}[label_mode_label]
 
-    st.markdown("#### Geometry Parameters")
-    params: dict[str, Any] = {}
-    parameter_columns = st.columns(min(3, max(1, len(preset["parameters"]))))
-    for index, parameter in enumerate(preset["parameters"]):
-        with parameter_columns[index % len(parameter_columns)]:
+    with st.sidebar:
+        st.header("Geometry Parameters")
+        params: dict[str, Any] = {}
+        for parameter in preset["parameters"]:
             if parameter.get("type", "number") == "number":
                 params[parameter["name"]] = _number_input(parameter, preset["key"])
             else:

@@ -5,6 +5,7 @@ from concrete_pmm_pro.analysis.runtime import (
     analysis_input_hash,
     apply_accuracy_preset_to_settings,
     cache_status_for_hash,
+    demand_capacity_input_hash,
     recalculation_required,
     serviceability_input_hash,
     timed_call,
@@ -140,6 +141,64 @@ def test_serviceability_input_hash_changes_with_serviceability_settings() -> Non
     changed = serviceability_input_hash(analysis_input, ServiceabilitySettings(enabled=True, use_transformed_section=True))
 
     assert changed != base
+
+
+def test_demand_capacity_input_hash_is_stable_for_identical_pmm_hash_and_load_cases() -> None:
+    load_cases = [LoadCase(name="ULS-01", Pu_N=1_000_000, Mux_Nmm=100_000_000, Muy_Nmm=50_000_000, load_type="ULS")]
+
+    assert demand_capacity_input_hash("pmm-hash", load_cases) == demand_capacity_input_hash("pmm-hash", load_cases)
+
+
+def test_demand_capacity_input_hash_changes_when_pmm_hash_changes() -> None:
+    load_cases = [LoadCase(name="ULS-01", Pu_N=1_000_000, Mux_Nmm=100_000_000, Muy_Nmm=50_000_000, load_type="ULS")]
+
+    assert demand_capacity_input_hash("pmm-hash-a", load_cases) != demand_capacity_input_hash("pmm-hash-b", load_cases)
+
+
+def test_demand_capacity_input_hash_changes_when_pu_changes() -> None:
+    base = [LoadCase(name="ULS-01", Pu_N=1_000_000, Mux_Nmm=100_000_000, Muy_Nmm=50_000_000, load_type="ULS")]
+    changed = [LoadCase(name="ULS-01", Pu_N=1_100_000, Mux_Nmm=100_000_000, Muy_Nmm=50_000_000, load_type="ULS")]
+
+    assert demand_capacity_input_hash("pmm-hash", changed) != demand_capacity_input_hash("pmm-hash", base)
+
+
+def test_demand_capacity_input_hash_changes_when_mux_or_muy_changes() -> None:
+    base = [LoadCase(name="ULS-01", Pu_N=1_000_000, Mux_Nmm=100_000_000, Muy_Nmm=50_000_000, load_type="ULS")]
+    changed_mux = [LoadCase(name="ULS-01", Pu_N=1_000_000, Mux_Nmm=120_000_000, Muy_Nmm=50_000_000, load_type="ULS")]
+    changed_muy = [LoadCase(name="ULS-01", Pu_N=1_000_000, Mux_Nmm=100_000_000, Muy_Nmm=60_000_000, load_type="ULS")]
+    base_hash = demand_capacity_input_hash("pmm-hash", base)
+
+    assert demand_capacity_input_hash("pmm-hash", changed_mux) != base_hash
+    assert demand_capacity_input_hash("pmm-hash", changed_muy) != base_hash
+
+
+def test_demand_capacity_input_hash_changes_when_active_status_changes() -> None:
+    base = [
+        LoadCase(name="ULS-01", Pu_N=1_000_000, Mux_Nmm=100_000_000, Muy_Nmm=50_000_000, load_type="ULS"),
+        LoadCase(name="ULS-02", Pu_N=1_200_000, Mux_Nmm=90_000_000, Muy_Nmm=40_000_000, load_type="ULS", active=False),
+    ]
+    changed = [
+        LoadCase(name="ULS-01", Pu_N=1_000_000, Mux_Nmm=100_000_000, Muy_Nmm=50_000_000, load_type="ULS"),
+        LoadCase(name="ULS-02", Pu_N=1_200_000, Mux_Nmm=90_000_000, Muy_Nmm=40_000_000, load_type="ULS", active=True),
+    ]
+
+    assert demand_capacity_input_hash("pmm-hash", changed) != demand_capacity_input_hash("pmm-hash", base)
+
+
+def test_demand_capacity_input_hash_ignores_ui_only_notes() -> None:
+    base = [LoadCase(name="ULS-01", Pu_N=1_000_000, Mux_Nmm=100_000_000, Muy_Nmm=50_000_000, load_type="ULS")]
+    changed = [
+        LoadCase(
+            name="ULS-01",
+            Pu_N=1_000_000,
+            Mux_Nmm=100_000_000,
+            Muy_Nmm=50_000_000,
+            load_type="ULS",
+            note="UI-only review note",
+        )
+    ]
+
+    assert demand_capacity_input_hash("pmm-hash", changed) == demand_capacity_input_hash("pmm-hash", base)
 
 
 def test_timed_call_returns_result_and_timing() -> None:
