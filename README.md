@@ -2,7 +2,7 @@
 
 Professional Streamlit engineering application foundation for reinforced concrete and prestressed concrete PMM analysis.
 
-This repository is at Milestone P.1.1 plus R.FIG.1.1 figure-export deployment hotfix. The PMM solver and ULS demand/capacity workflow are still prototypes. The app navigation is grouped into engineering workspaces, and the Analysis workspace has real subtabs for ULS / PMM, SLS / Stress & Cracking, and Report / QA. Analysis now includes runtime controls, stable engineering-input hashes, cache status indicators, and lightweight timing diagnostics around expensive UI-triggered operations. Existing Project, Materials, Section Builder, Rebar, Prestress, Loads, PMM, SLS, cracking, report export, and report QA tools remain reachable without changing calculation logic. Bonded prestress contribution is included in the PMM prototype with refined prestressing steel stress-strain models, ordinary rebar displaced-concrete refinement, independent hand-calculation spot checks, engineering verification safeguards, benchmark-style solver checks, refined PMM slice interpolation, slice envelope robustness checks, clearer warning/reporting text, numerical cleanup, elastic SLS stress checks using either gross or uncracked transformed section properties, optional effective bonded prestress contribution, no-tension/decompression serviceability judgement, SLS stress sign benchmark checks, cracking/tension-zone classification from existing SLS stress results, custom SLS stress check points with geometry validation, SLS stress visualization on the section, context-aware engineering limitation filtering, report manifest JSON, draft Word report export, and Word report QA; unbonded prestress, full cracked-section stress redistribution, crack-width checks, Beam/Girder flexure/shear/torsion checks, PDF export, and production-grade design certification are intentionally not implemented yet.
+This repository is at Milestone P.1.1 plus V.PS1 visualization cleanup and R.FIG.1.1 figure-export deployment hotfix. The PMM solver and ULS demand/capacity workflow are still prototypes. The app navigation is grouped into engineering workspaces, and the Analysis workspace has real subtabs for ULS / PMM, SLS / Stress & Cracking, and Report / QA. Analysis now includes runtime controls, stable engineering-input hashes, cache status indicators, and lightweight timing diagnostics around expensive UI-triggered operations. Existing Project, Materials, Section Builder, Rebar, Prestress, Loads, PMM, SLS, cracking, report export, and report QA tools remain reachable without changing calculation logic. Bonded prestress contribution is included in the PMM prototype with refined prestressing steel stress-strain models, ordinary rebar displaced-concrete refinement, independent hand-calculation spot checks, engineering verification safeguards, benchmark-style solver checks, refined PMM slice interpolation, slice envelope robustness checks, clearer warning/reporting text, numerical cleanup, elastic SLS stress checks using either gross or uncracked transformed section properties, optional effective bonded prestress contribution, no-tension/decompression serviceability judgement, SLS stress sign benchmark checks, cracking/tension-zone classification from existing SLS stress results, custom SLS stress check points with geometry validation, SLS stress visualization on the section, context-aware engineering limitation filtering, report manifest JSON, draft Word report export, and Word report QA; unbonded prestress, full cracked-section stress redistribution, crack-width checks, Beam/Girder flexure/shear/torsion checks, PDF export, and production-grade design certification are intentionally not implemented yet.
 
 ## Internal Units
 
@@ -10,6 +10,16 @@ This repository is at Milestone P.1.1 plus R.FIG.1.1 figure-export deployment ho
 - Stress: MPa
 - Force: N
 - Moment: N-mm
+
+## Milestone V.PS1 Scope
+
+- Section preview prestress markers now use circular markers for strand, tendon, wire, PT bar, and custom prestress steel.
+- Rebar remains circular and keeps its existing visual style.
+- Prestressing strand/tendon and PT bars are distinguished by color and legend group instead of marker shape.
+- Prestress marker sizing is based on nominal steel diameter when available for single steel elements, or equivalent steel-area diameter when diameter is unavailable.
+- Tendon group preview diameter is based on total steel area equivalent diameter, not a duct or pipe diameter.
+- Hover text shows true nominal diameter, display steel diameter, display basis, per-element steel area, total steel area, Pe_eff, and bonded status.
+- Existing PMM/SLS solver formulas, prestress sign convention, D/C algorithm, material models, load interpretation, report export, report QA, and engineering limitations are unchanged.
 
 ## Milestone P.1.1 Scope
 

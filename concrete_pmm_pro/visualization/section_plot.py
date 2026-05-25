@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import plotly.graph_objects as go
 
 from concrete_pmm_pro.core.models import DimensionItem, DimensionLabelMode, Point2D, PrestressElement, Rebar, SectionGeometry
@@ -11,6 +13,36 @@ from concrete_pmm_pro.geometry.summary import summarize_geometry
 def _closed_xy(points: list[Point2D]) -> tuple[list[float], list[float]]:
     closed = points + [points[0]]
     return [point.x for point in closed], [point.y for point in closed]
+
+
+def equivalent_diameter_from_area(area_mm2: float | None) -> float | None:
+    if area_mm2 is None or area_mm2 <= 0.0:
+        return None
+    return math.sqrt(4.0 * area_mm2 / math.pi)
+
+
+def display_diameter_for_prestress_element(element: PrestressElement) -> float | None:
+    if element.steel_type == "tendon_group":
+        return equivalent_diameter_from_area(element.total_area_mm2)
+    if element.diameter_mm is not None and element.diameter_mm > 0.0:
+        return element.diameter_mm
+    return equivalent_diameter_from_area(element.area_mm2)
+
+
+def _prestress_display_group(element: PrestressElement) -> tuple[str, str, str]:
+    if element.steel_type == "prestressing_bar":
+        return "PT bar", "#c2410c", "#fff7ed"
+    if element.steel_type in {"strand", "tendon_group", "wire"}:
+        return "Prestressing strand/tendon", "#2563eb", "#eff6ff"
+    return "Prestress steel", "#0f766e", "#ecfeff"
+
+
+def _marker_size_from_diameter(diameter_mm: float | None) -> float:
+    # Marker size is intentionally display-scaled and clamped for readability;
+    # hover text keeps the true steel diameter and area values visible.
+    if diameter_mm is None:
+        return 10.0
+    return max(8.0, min(28.0, diameter_mm * 0.7))
 
 
 def create_section_preview(
@@ -92,37 +124,55 @@ def create_section_preview(
         )
 
     if prestress_elements:
-        fig.add_trace(
-            go.Scatter(
-                x=[element.x_mm for element in prestress_elements],
-                y=[element.y_mm for element in prestress_elements],
-                mode="markers",
-                marker=dict(
-                    symbol="diamond",
-                    size=[max(10.0, min(28.0, (element.area_mm2**0.5) * 0.65)) for element in prestress_elements],
-                    color="#0f766e",
-                    line=dict(color="#ecfeff", width=1.5),
-                ),
-                text=[
-                    (
-                        f"{element.label or 'Prestress'}<br>"
-                        f"type={element.steel_type}<br>"
-                        f"x={element.x_mm:g} mm<br>"
-                        f"y={element.y_mm:g} mm<br>"
-                        f"count={element.count}<br>"
-                        f"Aps per element={element.area_mm2:.1f} mm^2<br>"
-                        f"total Aps={element.total_area_mm2:.1f} mm^2<br>"
-                        f"Pe_eff per element={element.pe_eff_n:.1f} N<br>"
-                        f"total Pe_eff={element.pe_eff_n * element.count:.1f} N<br>"
-                        f"f_init={(element.initial_stress_mpa or 0.0):.1f} MPa<br>"
-                        f"{'bonded' if element.bonded else 'unbonded'}"
-                    )
-                    for element in prestress_elements
-                ],
-                hoverinfo="text",
-                name="Prestress",
+        grouped: dict[str, list[PrestressElement]] = {}
+        group_styles: dict[str, tuple[str, str]] = {}
+        for element in prestress_elements:
+            group_name, color, outline = _prestress_display_group(element)
+            grouped.setdefault(group_name, []).append(element)
+            group_styles[group_name] = (color, outline)
+        for group_name, elements in grouped.items():
+            color, outline = group_styles[group_name]
+            display_diameters = [display_diameter_for_prestress_element(element) for element in elements]
+            display_sources = [
+                "total steel area equivalent diameter" if element.steel_type == "tendon_group" or element.diameter_mm is None else "nominal steel diameter"
+                for element in elements
+            ]
+            hover_text = []
+            for element, display_diameter, display_source in zip(elements, display_diameters, display_sources):
+                display_diameter_text = "N/A" if display_diameter is None else f"{display_diameter:.2f} mm"
+                nominal_diameter_text = "N/A" if element.diameter_mm is None else f"{element.diameter_mm:g} mm"
+                hover_text.append(
+                    f"{element.label or group_name}<br>"
+                    f"type={element.steel_type}<br>"
+                    f"x={element.x_mm:g} mm<br>"
+                    f"y={element.y_mm:g} mm<br>"
+                    f"count={element.count}<br>"
+                    f"nominal steel D={nominal_diameter_text}<br>"
+                    f"display steel D={display_diameter_text}<br>"
+                    f"display basis={display_source}<br>"
+                    f"Aps per element={element.area_mm2:.1f} mm^2<br>"
+                    f"total Aps={element.total_area_mm2:.1f} mm^2<br>"
+                    f"Pe_eff per element={element.pe_eff_n:.1f} N<br>"
+                    f"total Pe_eff={element.pe_eff_n * element.count:.1f} N<br>"
+                    f"f_init={(element.initial_stress_mpa or 0.0):.1f} MPa<br>"
+                    f"{'bonded' if element.bonded else 'unbonded'}"
+                )
+            fig.add_trace(
+                go.Scatter(
+                    x=[element.x_mm for element in elements],
+                    y=[element.y_mm for element in elements],
+                    mode="markers",
+                    marker=dict(
+                        symbol="circle",
+                        size=[_marker_size_from_diameter(diameter) for diameter in display_diameters],
+                        color=color,
+                        line=dict(color=outline, width=1.5),
+                    ),
+                    text=hover_text,
+                    hoverinfo="text",
+                    name=group_name,
+                )
             )
-        )
 
     summary = summarize_geometry(geometry)
     fig.add_trace(

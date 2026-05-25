@@ -14,6 +14,7 @@ from concrete_pmm_pro.ui.prestress_page import (
     validate_prestress_against_geometry,
 )
 from concrete_pmm_pro.visualization import create_section_preview
+from concrete_pmm_pro.visualization.section_plot import display_diameter_for_prestress_element, equivalent_diameter_from_area
 
 
 def _row(**overrides):
@@ -236,7 +237,37 @@ def test_preview_accepts_prestress_elements_without_crashing() -> None:
     fig = create_section_preview(rectangle(width_mm=400, height_mm=400), prestress_elements=[element])
 
     assert fig.data
-    assert any(trace.name == "Prestress" for trace in fig.data)
+    assert any(trace.name == "Prestressing strand/tendon" for trace in fig.data)
+
+
+def test_equivalent_diameter_from_area_matches_circular_area() -> None:
+    assert equivalent_diameter_from_area(140.0) == pytest.approx(13.35, abs=0.01)
+    assert equivalent_diameter_from_area(1680.0) == pytest.approx(46.27, abs=0.03)
+
+
+def test_tendon_group_display_diameter_uses_total_steel_area_not_diameter() -> None:
+    element = PrestressElement(
+        x_mm=0,
+        y_mm=0,
+        area_mm2=140.0,
+        diameter_mm=120.0,
+        steel_type="tendon_group",
+        count=12,
+        label="12 strand tendon",
+    )
+
+    assert display_diameter_for_prestress_element(element) == pytest.approx(46.27, abs=0.03)
+
+
+def test_prestress_preview_uses_circle_markers_and_type_colors() -> None:
+    strand = PrestressElement(x_mm=-50, y_mm=0, area_mm2=140.0, diameter_mm=15.2, steel_type="strand", label="Strand")
+    pt_bar = PrestressElement(x_mm=50, y_mm=0, area_mm2=804.2, diameter_mm=32.0, steel_type="prestressing_bar", label="PT Bar")
+    fig = create_section_preview(rectangle(width_mm=400, height_mm=400), prestress_elements=[strand, pt_bar])
+    traces = {trace.name: trace for trace in fig.data}
+
+    assert traces["Prestressing strand/tendon"].marker.symbol == "circle"
+    assert traces["PT bar"].marker.symbol == "circle"
+    assert traces["Prestressing strand/tendon"].marker.color != traces["PT bar"].marker.color
 
 
 def test_prestress_summary_includes_total_area_and_total_force() -> None:
